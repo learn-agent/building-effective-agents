@@ -42,7 +42,7 @@ func main() {
 	client := openai.NewClient(opts...)
 
 	model := openai.ChatModelGPT5Mini
-	if m := os.Getenv("LLM_MODEL"); m != "" {
+	if m := os.Getenv("OPENAI_MODEL"); m != "" {
 		model = shared.ChatModel(m)
 	}
 

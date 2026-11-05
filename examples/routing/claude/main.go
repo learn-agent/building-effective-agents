@@ -38,7 +38,7 @@ func main() {
 	client := anthropic.NewClient(opts...)
 
 	model := anthropic.ModelClaudeHaiku5_5
-	if m := os.Getenv("LLM_MODEL"); m != "" {
+	if m := os.Getenv("ANTHROPIC_MODEL"); m != "" {
 		model = anthropic.Model(m)
 	}
 

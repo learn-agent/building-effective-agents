@@ -32,10 +32,21 @@ export ANTHROPIC_API_KEY=...
 export OPENAI_API_KEY=...
 ```
 
-- Claude 示例读取 `ANTHROPIC_API_KEY`
-- OpenAI 示例读取 `OPENAI_API_KEY`
-- `LLM_MODEL` 可覆盖默认模型
-- `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` 可指向兼容代理
+- Claude：`ANTHROPIC_API_KEY`，可选 `ANTHROPIC_BASE_URL`、`ANTHROPIC_MODEL`
+- OpenAI：`OPENAI_API_KEY`，可选 `OPENAI_BASE_URL`、`OPENAI_MODEL`
+
+使用中转/代理时，只改环境变量即可：
+
+```bash
+export ANTHROPIC_BASE_URL=https://your-proxy.example.com
+export ANTHROPIC_MODEL=your-model-name
+
+# 或者
+export OPENAI_BASE_URL=https://your-proxy.example.com/v1
+export OPENAI_MODEL=your-model-name
+```
+
+Base URL 的具体格式以代理文档为准。一般来说，Anthropic 填到域名即可（SDK 会拼 `/v1/messages`），OpenAI 通常包含 `/v1`（SDK 会拼 `/chat/completions`）。
 
 仓库不会自动加载 `.env`。需要时可以这样导入：
 

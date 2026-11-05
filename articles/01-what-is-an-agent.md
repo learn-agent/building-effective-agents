@@ -21,6 +21,171 @@ Anthropic 把很多种系统统称为 **agentic systems**，但在这之下做�
 
 一句话：**看控制流在谁手里。**
 
+## 先看一次真实的 HTTP 往返
+
+在继续讲概念之前，先看一次最小的工具调用。Claude 不会自己执行 `get_weather`；它只会在响应里告诉你“我要调用这个工具”。真正执行工具的是你的程序。
+
+整个往返长这样：
+
+```text
+用户问题
+  -> POST /v1/messages（带上 tools）
+  <- stop_reason: "tool_use"，content 里有 tool_use
+  -> 你的程序执行工具
+  -> POST /v1/messages（带上 assistant 的 tool_use + user 的 tool_result）
+  <- stop_reason: "end_turn"，content 里是最终文本
+```
+
+### 第一次请求：模型要求调用工具
+
+```bash
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
+export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-haiku-5-5}"
+
+curl "${ANTHROPIC_BASE_URL%/}/v1/messages" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d @- <<JSON
+{
+  "model": "$ANTHROPIC_MODEL",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "查询指定城市的当前天气",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {"type": "string", "description": "城市名，例如北京"}
+        },
+        "required": ["city"]
+      }
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "北京今天天气如何？"}
+  ]
+}
+JSON
+```
+
+`ANTHROPIC_MODEL` 默认是 `claude-haiku-5-5`。如果使用中转/代理，把它换成代理支持的模型名，并把 `ANTHROPIC_BASE_URL` 指向代理地址。`ANTHROPIC_BASE_URL` 填到域名即可，curl/SDK 会自己拼 `/v1/messages`。Claude 返回的响应大致如下：
+
+```json
+{
+  "id": "msg_01...",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01...",
+      "name": "get_weather",
+      "input": {"city": "北京"}
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 12, "output_tokens": 18}
+}
+```
+
+这里最重要的是三个字段：
+
+- `stop_reason` 是 `"tool_use"`，说明模型还没给出最终答案，它在等工具结果。
+- `content[0].type` 是 `"tool_use"`，里面有工具名 `name` 和参数 `input`。
+- `content[0].id` 是这次工具调用的关联 ID，回传结果时必须带上。
+
+`content` 是数组，因为一次响应可能包含多个块：普通文本、一个或多个 `tool_use`，甚至 thinking 块。代码里按 `type` 遍历即可。工具本身由你的代码执行。假设查到的结果是 `晴，25°C`。
+
+### 第二次请求：把工具结果交回模型
+
+```bash
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://api.anthropic.com}"
+export ANTHROPIC_MODEL="${ANTHROPIC_MODEL:-claude-haiku-5-5}"
+
+curl "${ANTHROPIC_BASE_URL%/}/v1/messages" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d @- <<JSON
+{
+  "model": "$ANTHROPIC_MODEL",
+  "max_tokens": 1024,
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "查询指定城市的当前天气",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {"type": "string", "description": "城市名，例如北京"}
+        },
+        "required": ["city"]
+      }
+    }
+  ],
+  "messages": [
+    {"role": "user", "content": "北京今天天气如何？"},
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_01...",
+          "name": "get_weather",
+          "input": {"city": "北京"}
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01...",
+          "content": "晴，25°C"
+        }
+      ]
+    }
+  ]
+}
+JSON
+```
+
+这次响应会变成最终答案：
+
+```json
+{
+  "id": "msg_02...",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+    {"type": "text", "text": "北京今天晴，气温 25°C。"}
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 42, "output_tokens": 20}
+}
+```
+
+`stop_reason` 变成 `"end_turn"`，`content` 里是普通的 `text` 块，没有新的 `tool_use`，循环就可以停止。
+
+如果模型一次返回多个 `tool_use`，就把多个 `tool_result` 放在同一条 `user` 消息的 `content` 数组里，每个结果的 `tool_use_id` 对应一个工具调用。
+
+### 这跟 Go 代码怎么对应
+
+在 Go SDK 里：
+
+- `resp.ToParam()` 就是把第一个响应里的 assistant 内容原样放进下一轮对话；
+- `anthropic.NewToolResultBlock(block.ID, result, isError)` 就是构造 `tool_result`；
+- 把 tool result 作为 `user` 消息追加进去，再调用一次 `Messages.New`。
+
+Agent 的循环本质上就是重复这三步。OpenAI SDK 的结构类似，只是字段名不同：工具调用在 `tool_calls` 里，工具结果用 `role: "tool"` 和 `tool_call_id` 回传。OpenAI 版本对应的环境变量是 `OPENAI_BASE_URL` 和 `OPENAI_MODEL`。
+
 ## 一张表看懂区别
 
 | 系统 | 下一步由谁决定 | 执行路径 | 典型例子 |

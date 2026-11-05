@@ -32,9 +32,10 @@ go run ./examples/prompt-chaining/claude
 
 ## 凭证与 provider
 
-- Claude 示例读取 `ANTHROPIC_API_KEY`；OpenAI 示例读取 `OPENAI_API_KEY`。
-- `LLM_MODEL` 覆盖默认模型；`ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` 可指向兼容代理。
-- 不再使用 `LLM_PROVIDER`：运行哪个目录就使用哪个 SDK。
+- Claude 示例读取 `ANTHROPIC_API_KEY`，模型和 Base URL 分别用 `ANTHROPIC_MODEL`、`ANTHROPIC_BASE_URL`。
+- OpenAI 示例读取 `OPENAI_API_KEY`，模型和 Base URL 分别用 `OPENAI_MODEL`、`OPENAI_BASE_URL`。
+- 不再使用 `LLM_PROVIDER` 或共享的 `LLM_MODEL`：运行哪个目录就使用哪个 SDK 和对应环境变量。
+- 默认模型/Base URL 只是 fallback；使用中转/代理时不应改代码，只改环境变量。
 - 仓库没有 `.env` 自动加载，运行前需 export 或 `source .env`。`.env` 已被 gitignore，永远不要硬编码或提交密钥。
 
 ## 测试与内容约定
