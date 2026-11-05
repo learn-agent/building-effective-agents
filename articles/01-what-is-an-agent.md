@@ -92,13 +92,56 @@ JSON
 }
 ```
 
-这里最重要的是三个字段：
+这里最重要的是三件事：
 
 - `stop_reason` 是 `"tool_use"`，说明模型还没给出最终答案，它在等工具结果。
-- `content[0].type` 是 `"tool_use"`，里面有工具名 `name` 和参数 `input`。
-- `content[0].id` 是这次工具调用的关联 ID，回传结果时必须带上。
+- `content` 是数组；找到 `type` 为 `"tool_use"` 的块，里面有工具名 `name`、参数 `input` 和这次调用的 `id`。
+- `tool_use.id` 是关联 ID，回传 `tool_result` 时必须带上。
 
-`content` 是数组，因为一次响应可能包含多个块：普通文本、一个或多个 `tool_use`，甚至 thinking 块。代码里按 `type` 遍历即可。工具本身由你的代码执行。假设查到的结果是 `晴，25°C`。
+`content` 是数组，因为一次响应可能包含多个块：普通文本、thinking、一个或多个 `tool_use`。代码里按 `type` 遍历即可。工具本身由你的代码执行。假设查到的结果是 `晴，25°C`。
+
+### 真实调用返回：多了一个 thinking 块
+
+上面的响应为了说明结构做了精简。比如我用 DeepSeek 调用后，返回的结构如下：
+
+```json
+{
+  "id": "66c12d11-d765-43fb-be85-115b5e87875c",
+  "type": "message",
+  "role": "assistant",
+  "model": "deepseek-flash[1m]",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "We need answer requires weather tool. Call get_weather city 北京.",
+      "signature": "66c12d11-d765-43fb-be85-115b5e87875c"
+    },
+    {
+      "type": "tool_use",
+      "id": "call_00_mdlaKp0eg90ADkPs4pT26794",
+      "name": "get_weather",
+      "input": {
+        "city": "北京"
+      }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {
+    "input_tokens": 303,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 54,
+    "service_tier": "standard"
+  }
+}
+```
+
+这个真实响应多了几个值得注意的点：
+
+- `tool_use` 不在 `content[0]`，而是在 `content[1]`。所以代码不能写死索引，必须遍历 `content` 并按 `type` 判断。
+- `model` 可能是替代模型名，`usage` 里也可能多出缓存、服务层级等字段；这些不影响消息结构。
+- 如果第一次响应包含 `thinking` 块，第二次请求里的 assistant `content` 要原样带上它们，不要只传 `tool_use`。
 
 ### 第二次请求：把工具结果交回模型
 
@@ -155,24 +198,42 @@ curl "${ANTHROPIC_BASE_URL%/}/v1/messages" \
 JSON
 ```
 
-这次响应会变成最终答案：
+这个示例沿用了精简版，所以 assistant 的 `content` 里只有 `tool_use`。实际调用如果返回了 `thinking` 块，要把 `thinking` 也一起放回 assistant 的 `content` 数组。
+
+这次响应会变成最终答案。用 DeepSeek 时，实际返回如下：
 
 ```json
 {
-  "id": "msg_02...",
+  "id": "0df5e53f-314f-4a76-a34c-54dbfb10829c",
   "type": "message",
   "role": "assistant",
-  "model": "claude-haiku-5-5",
+  "model": "deepseek-flash[1m]",
   "content": [
-    {"type": "text", "text": "北京今天晴，气温 25°C。"}
+    {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "0df5e53f-314f-4a76-a34c-54dbfb10829c"
+    },
+    {
+      "type": "text",
+      "text": "北京今天天气晴朗，当前气温约 **25°C**。适合外出，注意防晒和补水。"
+    }
   ],
   "stop_reason": "end_turn",
   "stop_sequence": null,
-  "usage": {"input_tokens": 42, "output_tokens": 20}
+  "usage": {
+    "input_tokens": 246,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 128,
+    "output_tokens": 23,
+    "service_tier": "standard"
+  }
 }
 ```
 
-`stop_reason` 变成 `"end_turn"`，`content` 里是普通的 `text` 块，没有新的 `tool_use`，循环就可以停止。
+`stop_reason` 变成 `"end_turn"`，`content` 里是 `thinking` + `text`，没有新的 `tool_use`，循环就可以停止。
+
+注意最终文本同样不一定在 `content[0]`：这里前面还有一个空的 `thinking` 块。所以 Go 里的 `textOf` 不是直接取第一个元素，而是遍历所有 `type == "text"` 的块再拼接。
 
 如果模型一次返回多个 `tool_use`，就把多个 `tool_result` 放在同一条 `user` 消息的 `content` 数组里，每个结果的 `tool_use_id` 对应一个工具调用。
 
@@ -180,7 +241,7 @@ JSON
 
 在 Go SDK 里：
 
-- `resp.ToParam()` 就是把第一个响应里的 assistant 内容原样放进下一轮对话；
+- `resp.ToParam()` 会把完整的 assistant content（包括 thinking 和 tool_use）原样放进下一轮对话；
 - `anthropic.NewToolResultBlock(block.ID, result, isError)` 就是构造 `tool_result`；
 - 把 tool result 作为 `user` 消息追加进去，再调用一次 `Messages.New`。
 

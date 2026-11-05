@@ -14,6 +14,7 @@ https://www.anthropic.com/research/building-effective-agents
 - 两个版本都刻意保持自包含，直接创建 SDK client、直接发请求。**不要**把 provider 调用抽到 `internal` 包或公共 helper；重复代码是为了让每段代码能直接贴进博客。
 - Claude 版本使用 Anthropic Messages API；OpenAI 版本使用 Chat Completions API。
 - 小工具放在各自文件里：prompt chaining 的数量检查、orchestrator 的 `cleanJSON`、evaluator 的 `PASS`/`REVISE` 解析、agent 的工具执行。
+- Agent 的 Claude 版本用 `resp.ToParam()` 保留完整 assistant content（可能包含 thinking 等额外块），不要改成只回传 `tool_use`；中转端点的返回结构可能比官方示例更丰富。
 - `articles/` 是按原文顺序编号的中文博客草稿。文章里的代码片段尽量与 `examples/` 对应，并保持自包含；不要为了复用把片段改成跨文件调用。
 
 ## 常用命令
