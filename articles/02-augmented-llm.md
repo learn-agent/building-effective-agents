@@ -32,24 +32,25 @@ Workflow 和 Agent 都是在这个积木上搭起来的。区别只在于：**�
 
 先看一张时序图。三种增强介入的位置并不一样：
 
-```text
-用户问题
-  │
-  ├─ 检索：查资料，拼进 user 消息 ──────────┐
-  │                                          │
-  ├─ 记忆：取出历史消息 ─────────────────────┤
-  │                                          ▼
-  │                                   POST /v1/messages
-  │                                    （system + messages + tools）
-  │                                          │
-  │                                          ▼
-  │                                   assistant 响应
-  │                                    ├─ text       → 直接返回
-  │                                    └─ tool_use   → 你的程序执行工具
-  │                                                     │
-  │                                                     └─ 结果回传，再请求一次
-  ▼
-最终答案
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant App as 你的程序
+    participant S as 检索 / 记忆
+    participant LLM as LLM API
+
+    U->>App: 用户问题
+    App->>S: 检索资料、取出历史消息
+    S-->>App: 参考资料 + 历史消息
+    App->>LLM: POST /v1/messages（system + messages + tools）
+    LLM-->>App: assistant 响应
+    loop 响应中包含 tool_use
+        App->>App: 执行工具
+        App->>LLM: 回传 tool_result
+        LLM-->>App: 新的 assistant 响应
+    end
+    App-->>U: 最终答案
 ```
 
 - **检索**发生在请求之前，属于输入侧；
