@@ -6,7 +6,7 @@
 
 ## 先说结论
 
-Anthropic 把 **Augmented LLM** 称为 agentic system 的基础积木：一个在 LLM 之外接上了**检索（retrieval）**、**工具（tools）**和**记忆（memory）**的模型。
+Anthropic 把 **Augmented LLM** 称为 agentic system 的基础积木：一个在 LLM 之外接上了**检索**（retrieval）、**工具**（tools）和**记忆**（memory）的模型。
 
 它不是某种框架，也不是一个必须导入的包。落到代码里，它就是一次普通的模型调用，只是在调用前后多了几件事：
 
