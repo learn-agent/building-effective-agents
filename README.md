@@ -7,7 +7,15 @@ Anthropic 文章 [Building effective agents](https://www.anthropic.com/research/
 ## 文章系列
 
 - [什么是 Agent，什么不是？](articles/01-what-is-an-agent.md)
-- [系列目录与写作计划](articles/README.md)
+- [Building Block：Augmented LLM](articles/02-augmented-llm.md)
+- [Workflow 总览：什么时候需要 workflow](articles/03-workflow-overview.md)
+- [Prompt Chaining：把任务拆成可检查的步骤](articles/04-prompt-chaining.md)
+- [Routing：先分类，再交给专门的提示词](articles/05-routing.md)
+- [Parallelization：并发独立子任务](articles/06-parallelization.md)
+- [Orchestrator-Workers：让模型拆任务，让代码管执行](articles/07-orchestrator-workers.md)
+- [Evaluator-Optimizer：生成、评审、再修改](articles/08-evaluator-optimizer.md)
+- [Agent：自主循环与停止条件](articles/09-agent-loop.md)
+- [系列目录与阅读建议](articles/README.md)
 
 ## 示例目录
 
